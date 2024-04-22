@@ -1,0 +1,69 @@
+name: Build my gnutemps image and push to my registry
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+jobs:
+  build-n-push:
+    runs-on: self-hosted
+    steps:
+    - uses: actions/checkout@v3
+    - name: Set the image version
+      id: vars
+      run: echo "tag=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
+    - name: Build the Docker image
+      run: docker build . --file Dockerfile --tag macro.int.pgmac.net:5000/gnutemps:${{ inputs.tags || steps.vars.outputs.tag }}
+    - name: Push to my internal registry
+      if: github.ref == 'refs/heads/"master"'
+      run: docker push macro.int.pgmac.net:5000/gnutemps:${{ inputs.tags || steps.vars.outputs.tag }}
+    - name: Exit code failure
+      if: failure()
+      run: |
+        echo "colour=danger" >> $GITHUB_ENV
+        echo "icon=🛑" >> $GITHUB_ENV
+    - name: Exit code cancelled
+      if: cancelled()
+      run: |
+        echo "colour=warning" >> $GITHUB_ENV
+        echo "icon=⚠" >> $GITHUB_ENV
+    - name: Exit code success
+      if: success()
+      run: |
+        echo "colour=good" >> $GITHUB_ENV
+        echo "icon=✅" >> $GITHUB_ENV
+
+    - name: Send Slack message
+      uses: slackapi/slack-github-action@v1.23.0
+      with:
+        payload: |
+          {
+            "channel": "builds",
+            "attachments": [
+              {
+                "mrkdwn_in": ["text", "pretext"],
+                "fallback": ${{ toJSON(join(github.event.commits.*.message, '<br>') || ':point_right: Manually triggered') }},
+                "color": "${{ env.colour || 'grey' }}",
+                "pretext": "${{ env.icon || '?' }} ${{ github.workflow }} (${{ github.ref_name }}) #${{ github.run_number }}",
+                "author_name": "${{ github.triggering_actor || github.actor }}",
+                "title": "${{ github.workflow }}",
+                "title_link": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+                "text": ${{ toJSON(join(github.event.commits.*.message, '\n') || ':point_right: Manually triggered') }}
+              },
+              {
+                "blocks": [
+                  {
+                    "type": "section",
+                    "text": {
+                      "type": "mrkdwn",
+                      "text": "<${{ github.event.pull_request.html_url || github.event.head_commit.url || github.server_url }}|View commit>"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
