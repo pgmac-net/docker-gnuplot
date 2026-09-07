@@ -13,6 +13,7 @@ jobs:
 
   build-n-push:
     needs: [slack-start]
+    # self-hosted: docker push to macro.int.pgmac.net:5000, reachable only from the homelab. See pgmac-net/homelabia#176.
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v3
